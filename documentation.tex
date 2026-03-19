@@ -1,0 +1,196 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{enumitem}
+
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true, linkcolor=violet, urlcolor=violet}
+
+\definecolor{bilpurple}{HTML}{4A2D7A}
+\definecolor{codebg}{HTML}{F5F0FA}
+
+\lstset{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{bilpurple},
+}
+
+\title{
+  \textcolor{bilpurple}{\textbf{Term Sheet Extraction Pipeline}}\\
+  \large Architecture, Algorithms, and Technical Documentation
+}
+\author{Nasser Kassioui}
+\date{March 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ==========================================================================
+\section{Introduction}
+
+This document describes the architecture and algorithms of a coordinate-based
+extraction pipeline for structured product term sheets in PDF format. The system
+processes documents in English, French, and German, and is optimised for
+BIL (Banque Internationale \`a Luxembourg) term sheets.
+
+The core insight driving the architecture is that \textbf{the problem is not
+text extraction, but structure reconstruction}. Standard PDF text extraction
+tools destroy the spatial relationships between labels and values. Our pipeline
+recovers this structure by working directly with word coordinates.
+
+% ==========================================================================
+\section{Architecture Overview}
+
+The pipeline consists of six modules:
+
+\begin{enumerate}[label=\arabic*.]
+  \item \textbf{coord\_extractor} --- Extracts words with bounding boxes,
+        reconstructs lines and columns, builds label-value pairs.
+  \item \textbf{lang\_detector} --- Detects document language (EN/FR/DE)
+        using keyword frequency.
+  \item \textbf{field\_extractor} --- Two-pass field extraction: structured
+        pairs first, regex fallback second.
+  \item \textbf{excel\_exporter} --- Excel output with BIL purple styling.
+  \item \textbf{highlighter} --- Annotates PDFs with coloured highlights.
+  \item \textbf{app.py} --- Streamlit web interface.
+\end{enumerate}
+
+Data flows linearly: PDF $\rightarrow$ coord\_extractor $\rightarrow$
+lang\_detector $\rightarrow$ field\_extractor $\rightarrow$ excel\_exporter.
+
+% ==========================================================================
+\section{Coordinate-Based Extraction}
+
+\subsection{The Word Gluing Problem}
+
+\texttt{pdfplumber}'s default \texttt{x\_tolerance=3} merges words whose
+characters are within 3 points of each other. BIL term sheets use tight
+character spacing, producing outputs like:
+
+\begin{lstlisting}
+SettlementCurrency  (instead of: Settlement Currency)
+ISINCH1481964653    (instead of: ISIN CH1481964653)
+\end{lstlisting}
+
+\textbf{Solution}: We set \texttt{x\_tolerance=1, y\_tolerance=1}. This
+produces 745 properly separated words on page 1 of the EN test document,
+versus 107 glued blobs with defaults.
+
+\subsection{Line Reconstruction}
+
+Words are sorted by (page, top, x0) and grouped into lines using a
+Y-proximity threshold:
+
+$$
+\text{same\_line}(w_i, w_j) \iff |w_i.\text{top} - w_j.\text{top}| \leq \tau_y
+$$
+
+where $\tau_y = 3.0$ points. This value was determined empirically from the
+BIL document layout where line height is 7--12pt and inter-line gap is 4--8pt.
+
+\subsection{Column Detection}
+
+For each page, we build a histogram of word left-edge positions ($x_0$),
+binned to 5-point resolution. The two most frequent bins separated by at
+least 20 points become column boundaries.
+
+In BIL term sheets, this reliably detects:
+\begin{itemize}
+  \item Column 1 (labels): $x_0 \approx 36$ pt
+  \item Column 2 (values): $x_0 \approx 142$ pt
+\end{itemize}
+
+\subsection{Label-Value Pair Construction}
+
+For each reconstructed line, words left of the column boundary form the
+\textit{label}; words right form the \textit{value}. Lines with labels
+exceeding 60 characters are classified as paragraph text and skipped.
+
+% ==========================================================================
+\section{Field Extraction}
+
+\subsection{Two-Pass Strategy}
+
+\textbf{Pass 1} (structured): Each label-value pair is looked up in a
+multilingual label map (\texttt{config.LABEL\_TO\_FIELD}) that covers
+English, French, and German variants.
+
+\textbf{Pass 2} (regex fallback): If Pass 1 does not find a field, regex
+patterns are applied to the full reconstructed text.
+
+This ordering matters: structured extraction from coordinates is more
+reliable than regex on linearised text, because it preserves the spatial
+relationship between labels and values.
+
+\subsection{ISIN Classification}
+
+All valid ISINs are found via the pattern \texttt{[A-Z]\{2\}[A-Z0-9]\{10\}}.
+The product's own ISIN (PST\_ISIN) is distinguished from underlying ISINs
+by proximity scoring: the ISIN closest to an ``ISIN'' label in the text
+is classified as PST\_ISIN.
+
+\subsection{Multilingual Support}
+
+Each field has regex patterns covering all three languages. For example,
+the Issuer field matches:
+\begin{itemize}
+  \item EN: ``Issuer''
+  \item FR: ``\'Emetteur'' / ``Emetteur''
+  \item DE: ``Emittentin''
+\end{itemize}
+
+% ==========================================================================
+\section{Difficulties Encountered}
+
+\begin{enumerate}
+  \item \textbf{Word gluing} was the single biggest obstacle. Discovering
+        that \texttt{x\_tolerance=1} solves it was the breakthrough.
+  \item \textbf{Multi-word labels split across columns}: labels like
+        ``Conditional Coupon Amount'' span the column boundary, placing
+        ``Conditional'' in the label column and ``Coupon Amount 5.60\%''
+        in the value column. We handle this by searching both label and
+        value for field-specific keywords.
+  \item \textbf{German declensions}: ``Schlechteste'' (nominative) vs
+        ``Schlechtesten'' (genitive) required wildcard suffixes in regex.
+  \item \textbf{Absent fields}: Barrier Reverse Convertibles (SSPA 1230)
+        do not specify Capital Protection. The system correctly returns
+        None rather than guessing.
+\end{enumerate}
+
+% ==========================================================================
+\section{Validation Results}
+
+Tested on 3 BIL term sheets (EN, FR, DE):
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Field} & \textbf{Fill Rate} & \textbf{Accuracy} \\
+\midrule
+PST\_ISIN         & 100\% & 100\% \\
+BIL               & 100\% & 100\% \\
+ISSUER            & 100\% & 100\% \\
+CURRENCY          & 100\% & 100\% \\
+MATURITY          & 100\% & 100\% \\
+COUPON            & 100\% & 100\% \\
+WORST\_OR\_AVERAGE & 100\% & 100\% \\
+SSPA\_TYPE        & 100\% & 100\% \\
+\bottomrule
+\end{tabular}
+\caption{Extraction results on the 3-document test set.}
+\end{table}
+
+\end{document}
