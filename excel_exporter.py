@@ -1,8 +1,8 @@
 # modules/excel_exporter.py
 #
 # Single-output format: Excel (.xlsx) with two sheets.
-# Sheet 1: Extraction results
-# Sheet 2: Underlying ISINs
+# Sheet 1: Extraction results (with annotated PDF link)
+# Sheet 2: Underlying ISINs + Bloomberg tickers
 
 import logging
 from pathlib import Path
@@ -14,11 +14,11 @@ import config
 
 logger = logging.getLogger(__name__)
 
-# The columns we export
+# Columns for Sheet 1 -- DENOMINATION removed, ANNOTATED_PDF added
 MAIN_COLUMNS = [
     "source_file", "LANGUAGE", "PST_ISIN", "BIL", "CLN",
     "CAPITAL_PROTECTION", "MATURITY", "WORST_OR_AVERAGE",
-    "CURRENCY", "ISSUER", "COUPON", "DENOMINATION", "SSPA_TYPE",
+    "CURRENCY", "ISSUER", "COUPON", "SSPA_TYPE", "ANNOTATED_PDF",
 ]
 
 
@@ -27,7 +27,7 @@ def export_excel(records: list, output_path: str) -> Path:
     Export extraction results to an Excel file.
 
     records: list of dicts, each with keys:
-        source_file, language, values (dict), underlying_isins (list)
+        source_file, language, values (dict), annotated_pdf (str or None)
     """
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -51,7 +51,6 @@ def export_excel(records: list, output_path: str) -> Path:
     ws1 = wb.active
     ws1.title = "Resultats"
 
-    # Headers
     for ci, col_name in enumerate(MAIN_COLUMNS, 1):
         cell = ws1.cell(row=1, column=ci, value=col_name)
         cell.font = header_font
@@ -59,12 +58,12 @@ def export_excel(records: list, output_path: str) -> Path:
         cell.alignment = header_align
         cell.border = thin_border
 
-    # Data rows
     for ri, record in enumerate(records, 2):
         vals = record.get("values", {})
         row_data = {
             "source_file": record.get("source_file", ""),
             "LANGUAGE": record.get("language", ""),
+            "ANNOTATED_PDF": record.get("annotated_pdf", ""),
         }
         row_data.update(vals)
 
@@ -74,16 +73,18 @@ def export_excel(records: list, output_path: str) -> Path:
                 val = ""
             if isinstance(val, bool):
                 val = "True" if val else "False"
+            # Skip list-type values (UNDERLYING_ISINS, BLOOMBERG_TICKERS)
+            if isinstance(val, list):
+                val = ""
             cell = ws1.cell(row=ri, column=ci, value=str(val))
             cell.border = thin_border
 
-    # Auto-width columns
     for ci, col_name in enumerate(MAIN_COLUMNS, 1):
         ws1.column_dimensions[_col_letter(ci)].width = max(len(col_name) + 4, 16)
 
-    # ========== Sheet 2: Underlying ISINs ==========
+    # ========== Sheet 2: Underlying ISINs + Tickers ==========
     ws2 = wb.create_sheet("Underlying_ISINs")
-    und_cols = ["source_file", "PST_ISIN", "UNDERLYING_ISIN"]
+    und_cols = ["source_file", "PST_ISIN", "UNDERLYING_ISIN", "BLOOMBERG_TICKER"]
 
     for ci, col_name in enumerate(und_cols, 1):
         cell = ws2.cell(row=1, column=ci, value=col_name)
@@ -96,13 +97,28 @@ def export_excel(records: list, output_path: str) -> Path:
     for record in records:
         vals = record.get("values", {})
         pst = vals.get("PST_ISIN", "")
-        for uid in vals.get("UNDERLYING_ISINS", []):
-            ws2.cell(row=ri, column=1, value=record.get("source_file", "")).border = thin_border
-            ws2.cell(row=ri, column=2, value=str(pst or "")).border = thin_border
-            ws2.cell(row=ri, column=3, value=uid).border = thin_border
-            ri += 1
+        underlyings = vals.get("UNDERLYING_ISINS", [])
+        tickers = vals.get("BLOOMBERG_TICKERS", [])
 
-    for ci in range(1, 4):
+        # If we have underlyings, write one row per underlying
+        if underlyings:
+            for idx, uid in enumerate(underlyings):
+                ticker = tickers[idx] if idx < len(tickers) else ""
+                ws2.cell(row=ri, column=1, value=record.get("source_file", "")).border = thin_border
+                ws2.cell(row=ri, column=2, value=str(pst or "")).border = thin_border
+                ws2.cell(row=ri, column=3, value=uid).border = thin_border
+                ws2.cell(row=ri, column=4, value=ticker).border = thin_border
+                ri += 1
+        # If no underlyings but we have tickers, write ticker rows
+        elif tickers:
+            for ticker in tickers:
+                ws2.cell(row=ri, column=1, value=record.get("source_file", "")).border = thin_border
+                ws2.cell(row=ri, column=2, value=str(pst or "")).border = thin_border
+                ws2.cell(row=ri, column=3, value="").border = thin_border
+                ws2.cell(row=ri, column=4, value=ticker).border = thin_border
+                ri += 1
+
+    for ci in range(1, len(und_cols) + 1):
         ws2.column_dimensions[_col_letter(ci)].width = 30
 
     wb.save(str(path))
@@ -111,7 +127,7 @@ def export_excel(records: list, output_path: str) -> Path:
 
 
 def _col_letter(ci: int) -> str:
-    """Convert 1-based column index to Excel letter (1->A, 2->B, etc)."""
+    """Convert 1-based column index to Excel letter."""
     result = ""
     while ci > 0:
         ci, remainder = divmod(ci - 1, 26)

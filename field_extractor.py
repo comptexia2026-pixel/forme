@@ -28,24 +28,30 @@ class FieldExtractor:
         self.lang = language
 
     def extract_all(self) -> dict:
-        """Return a dict with all extracted fields."""
+        """Return a dict with all extracted fields, normalised and cleaned."""
         all_isins = self._find_all_isins()
         pst_isin, underlying_isins = self._classify_isins(all_isins)
+        bloomberg_tickers = self._extract_bloomberg_tickers()
+
+        sspa_type = self._extract_sspa_type()
 
         result = {
             "PST_ISIN": pst_isin,
             "BIL": self._extract_bil(),
             "CLN": self._extract_cln(),
-            "CAPITAL_PROTECTION": self._extract_capital_protection(),
+            "CAPITAL_PROTECTION": self._extract_capital_protection(sspa_type),
             "MATURITY": self._extract_maturity(),
             "WORST_OR_AVERAGE": self._extract_worst_or_average(),
             "CURRENCY": self._extract_currency(),
             "ISSUER": self._extract_issuer(),
             "COUPON": self._extract_coupon(),
-            "DENOMINATION": self._extract_denomination(),
-            "SSPA_TYPE": self._extract_sspa_type(),
+            "SSPA_TYPE": sspa_type,
             "UNDERLYING_ISINS": underlying_isins,
+            "BLOOMBERG_TICKERS": bloomberg_tickers,
         }
+
+        # Post-processing: normalise everything
+        result = self._normalise(result)
         return result
 
     # -- Helper: lookup a field from label-value pairs --
@@ -138,10 +144,13 @@ class FieldExtractor:
         return bool(re.search(r"(?i)\b(credit[\s\-]?linked\s+note|CLN)\b", self.text))
 
     # =====================================================================
-    # Capital Protection
+    # Capital Protection -- 3-step logic
+    # Step 1: label-value pairs
+    # Step 2: regex on full text
+    # Step 3: infer from SSPA_TYPE (medium confidence)
     # =====================================================================
-    def _extract_capital_protection(self) -> Optional[str]:
-        # Pass 1: label-value pairs
+    def _extract_capital_protection(self, sspa_type: Optional[str] = None) -> Optional[str]:
+        # Step 1: label-value pairs
         raw = self._lookup_pair("CAPITAL_PROTECTION")
         if raw:
             if "none" in raw.lower() or "kein" in raw.lower() or "aucun" in raw.lower():
@@ -150,13 +159,14 @@ class FieldExtractor:
             if m:
                 return m.group(1).replace(",", ".")
 
-        # Pass 2: regex on full text (EN/FR/DE)
+        # Step 2: regex on full text (EN/FR/DE)
         patterns = [
             r"(?i)Capital\s+Protection\s*(?:\(at\s+Expiry\))?\s*[:\-]?\s*(None|\d{1,3}(?:[.,]\d+)?)\s*%?",
             r"(?i)Capital\s+Protection\s*(?:\(at\s+Expiry\))?\s*\n+\s*(None|\d{1,3}(?:[.,]\d+)?)\s*%?",
             r"(?i)Protection\s+du\s+Capital\s*[:\-]?\s*(\d{1,3}(?:[.,]\d+)?)\s*%",
             r"(?i)Kapitalschutz\s*[:\-]?\s*(None|Kein|\d{1,3}(?:[.,]\d+)?)\s*%?",
             r"(?i)Minimum\s+Redemption\s*[:\-]?\s*(\d{1,3}(?:[.,]\d+)?)\s*%",
+            r"(?i)Capital\s+Guarantee\s*[:\-]?\s*(\d{1,3}(?:[.,]\d+)?)\s*%",
         ]
         for p in patterns:
             m = re.search(p, self.text)
@@ -169,9 +179,20 @@ class FieldExtractor:
                 except ValueError:
                     pass
 
-        # "No Capital Protection" or "not capital protected"
+        # "No Capital Protection" / "not capital protected"
         if re.search(r"(?i)(no\s+capital\s+protection|not\s+capital\s+protected)", self.text):
             return "0"
+
+        # "100% Capital Protected" in title or body
+        m = re.search(r"(?i)(\d{1,3})\s*%\s*(?:Capital\s+)?Protected", self.text[:3000])
+        if m:
+            return m.group(1)
+
+        # Step 3: infer from SSPA product type (medium confidence, never overwrites)
+        if sspa_type and sspa_type in config.SSPA_CAPITAL_PROTECTION:
+            inferred = config.SSPA_CAPITAL_PROTECTION[sspa_type]
+            logger.info(f"  Capital Protection inferred from SSPA {sspa_type}: {inferred}%")
+            return str(inferred)
 
         return None
 
@@ -189,7 +210,6 @@ class FieldExtractor:
                     return date
 
         # Pass 2: regex on text
-        # "Final Fixing Date 07/09/2027" or "Verfall 07.09.2027"
         date_patterns = [
             r"(?i)(?:Final\s+Fixing\s+Date|Maturity\s+Date|Redemption\s+Date|Verfall|"
             r"Date\s+de\s+Constatation\s+Finale|Date\s+de\s+Remboursement|Rückzahlungstag)"
@@ -200,7 +220,9 @@ class FieldExtractor:
         for p in date_patterns:
             m = re.search(p, self.text)
             if m:
-                return m.group(1).strip()
+                # Run through _parse_date to normalise to ISO
+                normalised = self._parse_date(m.group(1).strip())
+                return normalised if normalised else m.group(1).strip()
 
         # Open End
         if re.search(r"(?i)(no\s+fixed\s+(?:Expiration|Redemption)|Open\s+End)", self.text):
@@ -210,26 +232,36 @@ class FieldExtractor:
 
     @staticmethod
     def _parse_date(raw: str) -> Optional[str]:
-        """Try to pull a date from a raw string."""
-        # "07/09/2027" or "30.10.2029"
-        m = re.search(r"(\d{1,2}[/\.\-]\d{1,2}[/\.\-]\d{4})", raw)
-        if m:
-            return m.group(1)
-        # "04 February 2028"
-        m = re.search(r"(\d{1,2}\s+\w+\s+\d{4})", raw)
-        if m:
-            return m.group(1)
-        # "(subject to..." -- strip it
+        """Extract a date from raw string and normalise to YYYY-MM-DD."""
+        # Strip noise like "(subject to..."
         cleaned = re.sub(r"\(.*", "", raw).strip()
-        m = re.search(r"(\d{1,2}[/\.\-]\d{1,2}[/\.\-]\d{4})", cleaned)
+
+        # Format "07/09/2027" or "30.10.2029" or "30-10-2029"
+        m = re.search(r"(\d{1,2})[/\.\-](\d{1,2})[/\.\-](\d{4})", cleaned)
         if m:
-            return m.group(1)
+            d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if 1 <= mo <= 12 and 1 <= d <= 31:
+                return f"{y:04d}-{mo:02d}-{d:02d}"
+            # Maybe it's MM/DD/YYYY (unlikely in European docs but handle it)
+            if 1 <= d <= 12 and 1 <= mo <= 31:
+                return f"{y:04d}-{d:02d}-{mo:02d}"
+
+        # Format "04 February 2028" / "30 octobre 2029" / "07 September 2027"
+        m = re.search(r"(\d{1,2})\s+(\w+)\s+(\d{4})", cleaned)
+        if m:
+            d, month_name, y = int(m.group(1)), m.group(2).lower(), int(m.group(3))
+            mo = config.MONTH_MAP.get(month_name)
+            if mo:
+                return f"{y:04d}-{mo:02d}-{d:02d}"
+            # Month name not recognized -- return as-is rather than lose the data
+            return m.group(0)
+
         return None
 
     # =====================================================================
     # Worst-of / Average
     # =====================================================================
-    def _extract_worst_or_average(self) -> Optional[str]:
+    def _extract_worst_or_average(self) -> str:
         # Search in first ~5000 chars (product description, not disclaimers)
         search_zone = self.text[:5000]
 
@@ -241,7 +273,8 @@ class FieldExtractor:
             if re.search(pattern, search_zone, re.IGNORECASE):
                 return "A"
 
-        return None
+        # Explicitly return "nan" for homogeneous output
+        return "nan"
 
     # =====================================================================
     # Currency
@@ -321,13 +354,118 @@ class FieldExtractor:
         return None
 
     # =====================================================================
-    # Denomination
+    # Bloomberg Tickers -- extract from underlying table
     # =====================================================================
-    def _extract_denomination(self) -> Optional[str]:
-        raw = self._lookup_pair("DENOMINATION")
-        if raw:
-            return raw.strip()
-        return None
+    def _extract_bloomberg_tickers(self) -> list[str]:
+        """
+        Extract Bloomberg tickers from the underlying assets table.
+        The underlying table lines look like:
+          ALPHABET INC-CL A  NASDAQ  GOOGL UQ  USD 232.3000 ...
+          NOVO NORDISK A/S-B  OMX Nordic  NOVOB DC  DKK 360.5000 ...
+        Tickers are 1-6 uppercase chars optionally followed by a 2-letter exchange code.
+        """
+        tickers = []
+
+        # Find the underlying table zone in the text.
+        # It starts after "UNDERLYING" header and ends before "PRODUCT DETAILS".
+        text = self.text
+        start = 0
+        for marker in ["UNDERLYING", "SOUS-JACENT", "BASISWERT"]:
+            pos = text.find(marker)
+            if pos != -1:
+                start = pos
+                break
+
+        end = len(text)
+        for marker in ["PRODUCT DETAILS", "DÉTAILS DU PRODUIT", "PRODUKTDETAILS"]:
+            pos = text.find(marker, start)
+            if pos != -1:
+                end = pos
+                break
+
+        zone = text[start:end]
+
+        # Pattern: TICKER EXCHANGE_CODE (e.g., "GOOGL UQ", "WBD UQ", "NOVOB DC", "SREN SW")
+        # These appear after an exchange name (NASDAQ, SIX Swiss Exchange, OMX Nordic, etc.)
+        # and before a currency+number (USD 232.3000)
+        exchange_names = [
+            "NASDAQ", "NYSE", "SIX Swiss", "SIX", "OMX Nordic", "OMX",
+            "Euronext", "LSE", "XETRA", "TSE", "HKEX",
+            "STOXX Limited", "STOXX", "S&P Dow Jones", "Indices LLC",
+        ]
+        for ex in exchange_names:
+            for m in re.finditer(re.escape(ex) + r"[^\n]{0,30}", zone):
+                chunk = m.group(0)
+                after_ex = chunk[len(ex):].strip()
+                # Remove leftover words like "Exchange AG" before the ticker
+                after_ex = re.sub(r"^(?:Exchange\s+AG|AG|Limited|LLC)\s*", "", after_ex).strip()
+                # "GOOGL UQ" or "WBD UQ" or "NOVOB DC"
+                tm = re.match(r"([A-Z][A-Z0-9]{0,5})\s+([A-Z]{2})\b", after_ex)
+                if tm:
+                    tickers.append(f"{tm.group(1)} {tm.group(2)}")
+                else:
+                    # Standalone ticker like "SPX" or "SMI" or "SX5E"
+                    tm = re.match(r"([A-Z][A-Z0-9]{1,5})\b", after_ex)
+                    if tm and tm.group(1) not in ("USD","EUR","CHF","GBP","JPY","DKK","TBA","FOR","THE"):
+                        tickers.append(tm.group(1))
+
+        # Also catch standalone tickers right before a currency+number on data lines
+        # e.g., "... SX5E EUR 4028.3200 ..." or "... SPX USD 4166.8200 ..."
+        for line in zone.split("\n"):
+            for tm in re.finditer(r"\b([A-Z][A-Z0-9]{1,5})\s+([A-Z]{2})\s+(?:USD|EUR|CHF|GBP|DKK|JPY|NOK|SEK)\s+[\d.,]+", line):
+                candidate = f"{tm.group(1)} {tm.group(2)}"
+                if candidate not in tickers:
+                    tickers.append(candidate)
+            # Standalone: "SX5E EUR 4028" where SX5E is followed directly by currency
+            for tm in re.finditer(r"\b([A-Z][A-Z0-9]{2,5})\s+(?:USD|EUR|CHF|GBP|DKK|JPY)\s+[\d.,]+", line):
+                candidate = tm.group(1)
+                if candidate not in tickers and candidate not in ("USD","EUR","CHF","GBP","JPY","DKK","TBA"):
+                    tickers.append(candidate)
+
+        # Deduplicate preserving order
+        seen = set()
+        unique = []
+        for t in tickers:
+            if t not in seen:
+                seen.add(t)
+                unique.append(t)
+        return unique
+
+    # =====================================================================
+    # Post-processing: normalise all extracted values
+    # =====================================================================
+    def _normalise(self, result: dict) -> dict:
+        """Clean and standardise all extracted values for homogeneous output."""
+
+        # ISSUER: remove trailing noise, standardise whitespace
+        issuer = result.get("ISSUER")
+        if issuer:
+            issuer = re.sub(r"\s+", " ", issuer).strip()
+            issuer = issuer.rstrip(" ,;:-")
+            issuer = re.sub(r'\s*\(.*?\)\s*$', '', issuer).strip()
+            result["ISSUER"] = issuer
+
+        # CURRENCY: force uppercase ISO 4217
+        ccy = result.get("CURRENCY")
+        if ccy:
+            result["CURRENCY"] = ccy.upper().strip()
+
+        # COUPON: trim whitespace
+        coupon = result.get("COUPON")
+        if coupon:
+            result["COUPON"] = coupon.strip()
+
+        # PST_ISIN: trim whitespace
+        isin = result.get("PST_ISIN")
+        if isin:
+            result["PST_ISIN"] = isin.strip()
+
+        # Strip all string values
+        for key, val in result.items():
+            if isinstance(val, str):
+                result[key] = val.strip()
+
+        return result
 
     # =====================================================================
     # SSPA Product Type

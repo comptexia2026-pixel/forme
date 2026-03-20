@@ -105,6 +105,7 @@ def print_summary(records: list):
             1 for r in records
             if r.get("values", {}).get(field) is not None
             and r.get("values", {}).get(field) != ""
+            and r.get("values", {}).get(field) != "nan"
         )
         rate = (filled / len(records) * 100) if records else 0
         bar = "#" * int(rate / 5) + "." * (20 - int(rate / 5))
@@ -151,19 +152,27 @@ def main():
         logger.error("No records produced.")
         return
 
-    # Export Excel
-    excel_path = output_dir / "extraction_results.xlsx"
-    export_excel(records, str(excel_path))
-
-    # Highlight PDFs
+    # Highlight PDFs and record the annotated file path
     if not args.no_highlight:
         annotated_dir = output_dir / "annotated"
         for record in records:
             pdf_path = input_dir / record["source_file"]
             if pdf_path.exists():
-                out_path = annotated_dir / f"annotated_{record['source_file']}"
+                annotated_name = f"annotated_{record['source_file']}"
+                out_path = annotated_dir / annotated_name
                 n = highlight_pdf(str(pdf_path), str(out_path), record["values"])
                 logger.info(f"  Highlighted {record['source_file']}: {n} annotations")
+                # Store the annotated filename in the record for Excel export
+                record["annotated_pdf"] = annotated_name if n > 0 else ""
+            else:
+                record["annotated_pdf"] = ""
+    else:
+        for record in records:
+            record["annotated_pdf"] = ""
+
+    # Export Excel (after highlighting so we have the annotated paths)
+    excel_path = output_dir / "extraction_results.xlsx"
+    export_excel(records, str(excel_path))
 
     # Summary
     print_summary(records)

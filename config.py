@@ -142,15 +142,54 @@ LABEL_TO_FIELD = {
     "Conditional Coupon Amount":    "COUPON",
     "Coupon":                       "COUPON",
     "Bedingte Couponzahlung":       "COUPON",
-    # Denomination
-    "Denomination":                 "DENOMINATION",
-    "Valeur Nominale":              "DENOMINATION",
     # Product type
     "SSPA Product Type":            "SSPA_TYPE",
     # Skip labels (we want to ignore these)
     "Governing Law":                "_SKIP_",
     "Listing":                      "_SKIP_",
     "Valuation Date":               "_SKIP_",
+}
+
+# -- SSPA-based capital protection inference --
+# Used when no explicit Capital Protection is found in the document.
+# Maps SSPA product type code to expected capital protection percentage.
+SSPA_CAPITAL_PROTECTION = {
+    "1100": 100,   # Capital Protection with Participation
+    "1110": 100,   # Capital Protection with Cap
+    "1120": 100,   # Capital Protection with Barrier
+    "1130": 100,   # Capital Protection with Coupon
+    "1140": 100,   # Capital Protection with Twin-Win
+    "1199": 100,   # Miscellaneous Capital Protection
+    "1200": 0,     # Yield Enhancement (no protection)
+    "1210": 0,     # Discount Certificate
+    "1220": 0,     # Reverse Convertible
+    "1230": 0,     # Barrier Reverse Convertible
+    "1240": 0,     # Express Certificate with Barrier
+    "1250": 0,     # Yield Enhancement misc
+    "1260": 0,     # Express Certificate
+    "1300": 0,     # Participation (no protection)
+    "1310": 0,     # Tracker Certificate
+    "1320": 0,     # Outperformance Certificate
+    "1330": 0,     # Bonus Certificate
+    "2100": 0,     # Warrant
+    "2110": 0,     # Spread Warrant
+    "2200": 0,     # Knock-Out Warrant
+    "2300": 0,     # Mini-Future
+}
+
+# -- Month name to number mapping (for date normalisation, EN/FR/DE) --
+MONTH_MAP = {
+    # EN
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "may": 5, "june": 6, "july": 7, "august": 8,
+    "september": 9, "october": 10, "november": 11, "december": 12,
+    # FR
+    "janvier": 1, "février": 2, "fevrier": 2, "mars": 3, "avril": 4,
+    "mai": 5, "juin": 6, "juillet": 7, "août": 8, "aout": 8,
+    "septembre": 9, "octobre": 10, "novembre": 11, "décembre": 12, "decembre": 12,
+    # DE
+    "januar": 1, "februar": 2, "märz": 3, "marz": 3,
+    "juni": 6, "juli": 7, "oktober": 10, "dezember": 12,
 }
 
 # -- Worst-of / Average detection keywords --
