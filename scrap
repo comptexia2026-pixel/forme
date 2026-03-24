@@ -1,0 +1,1236 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{tcolorbox}
+\usepackage{float}
+\usepackage{tabularx}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\geometry{margin=2.2cm, top=2.5cm, bottom=2.5cm}
+
+\definecolor{bilpurple}{HTML}{4A2D7A}
+\definecolor{billight}{HTML}{F5F0FA}
+\definecolor{codebg}{HTML}{F8F5FD}
+\definecolor{kwc}{HTML}{6B3FA0}
+\definecolor{strc}{HTML}{2E7D32}
+\definecolor{cmtc}{HTML}{9E9E9E}
+\definecolor{critred}{HTML}{CC2222}
+\definecolor{safegreen}{HTML}{228B22}
+
+\hypersetup{colorlinks=true,linkcolor=bilpurple,urlcolor=bilpurple,
+  pdftitle={Rapport Technique -- Pipeline Term Sheet},pdfauthor={Nasser Kassioui}}
+
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small\textcolor{bilpurple}{Rapport Technique -- Pipeline Term Sheet}}
+\fancyhead[R]{\small\textcolor{bilpurple}{Nasser Kassioui}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\titleformat{\section}{\Large\bfseries\color{bilpurple}}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries\color{bilpurple!80!black}}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{bilpurple!60!black}}{\thesubsubsection}{1em}{}
+
+\lstdefinestyle{py}{
+  language=Python, backgroundcolor=\color{codebg}, basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{kwc}\bfseries, stringstyle=\color{strc}, commentstyle=\color{cmtc}\itshape,
+  breaklines=true, frame=single, rulecolor=\color{bilpurple},
+  numbers=left, numberstyle=\tiny\color{cmtc}, numbersep=6pt,
+  showstringspaces=false, tabsize=4,
+  literate={à}{{\`a}}1 {é}{{\'e}}1 {è}{{\`e}}1 {ê}{{\^e}}1 {ù}{{\`u}}1
+           {ç}{{\c{c}}}1 {ö}{{\"o}}1 {ü}{{\"u}}1 {ä}{{\"a}}1
+           {→}{{$\rightarrow$}}1 {≥}{{$\geq$}}1 {≤}{{$\leq$}}1,
+  morekeywords={self,True,False,None,Optional,dataclass},
+}
+
+\lstdefinestyle{pseudo}{
+  backgroundcolor=\color{codebg}, basicstyle=\ttfamily\footnotesize,
+  breaklines=true, frame=single, rulecolor=\color{bilpurple},
+  numbers=left, numberstyle=\tiny\color{cmtc}, numbersep=6pt,
+  keywords={POUR,SI,SINON,RETOURNER,FIN,TANT,QUE,FONCTION,FAIRE,CHAQUE,DANS,OU,ET,NON},
+  keywordstyle=\color{kwc}\bfseries,
+  literate={à}{{\`a}}1 {é}{{\'e}}1 {è}{{\`e}}1 {ê}{{\^e}}1 {ç}{{\c{c}}}1
+           {←}{{$\leftarrow$}}1 {→}{{$\rightarrow$}}1
+           {≤}{{$\leq$}}1 {≥}{{$\geq$}}1 {≠}{{$\neq$}}1,
+}
+
+\newtcolorbox{critbox}[1][]{colback=red!5,colframe=critred,fonttitle=\bfseries,title=#1}
+\newtcolorbox{safebox}[1][]{colback=green!5,colframe=safegreen,fonttitle=\bfseries,title=#1}
+\newtcolorbox{infobox}[1][]{colback=billight,colframe=bilpurple,fonttitle=\bfseries,title=#1}
+
+\begin{document}
+
+% ===== PAGE DE TITRE =====
+\begin{titlepage}
+\centering\vspace*{2cm}
+{\Huge\bfseries\textcolor{bilpurple}{Rapport Technique Complet}\par}\vspace{0.4cm}
+{\LARGE\textcolor{bilpurple!70!black}{Pipeline d'Extraction de Term Sheets PDF}\par}\vspace{0.3cm}
+{\Large Syst\`eme Actuel \& Pipeline d'Am\'elioration IA/ML\par}
+\vspace{2cm}
+\rule{0.5\textwidth}{1pt}\vspace{1cm}
+{\large\textbf{Nasser Kassioui} --- Mars 2026\par}
+\vspace{3cm}
+\begin{tcolorbox}[colback=billight,colframe=bilpurple,width=0.85\textwidth]
+\centering
+Ce rapport documente l'architecture compl\`ete du syst\`eme d'extraction,
+ses algorithmes fondamentaux, ses points critiques, et propose une
+feuille de route pour l'int\'egration progressive de techniques IA/ML.
+Destin\'e aux d\'eveloppeurs, quants et auditeurs IT.
+\end{tcolorbox}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+
+% #############################################################################
+% #############################################################################
+\part{Syst\`eme Actuel --- Version Finale}
+% #############################################################################
+% #############################################################################
+
+
+% =============================================================================
+\section{Vue d'ensemble}
+% =============================================================================
+
+\subsection{Pipeline compl\`ete}
+
+La pipeline transforme un fichier PDF en donn\'ees structur\'ees selon le flux suivant :
+
+$$\text{PDF} \xrightarrow{\text{coord\_extractor}} \text{(words, lines, pairs, text)}
+\xrightarrow{\text{lang\_detector}} \text{langue}
+\xrightarrow{\text{field\_extractor}} \text{dict champs}
+\xrightarrow{\text{excel\_exporter}} \text{.xlsx}$$
+
+Chaque \'etape est isol\'ee dans un module ind\'ependant. La communication entre
+modules se fait exclusivement via des structures de donn\'ees bien d\'efinies
+(dataclasses).
+
+\subsection{Philosophie : coordonn\'ees vs texte brut}
+
+\begin{infobox}[Choix fondamental]
+La pipeline \textbf{n'utilise pas} \texttt{extract\_text()} de pdfplumber.
+Elle extrait chaque mot avec ses coordonn\'ees $(x_0, y_0, x_1, y_1)$ et
+reconstruit la structure du document \`a partir de ces positions spatiales.
+\end{infobox}
+
+Ce choix r\'esout trois probl\`emes fondamentaux des approches texte brut :
+
+\begin{enumerate}
+  \item \textbf{Collage de mots} : \texttt{extract\_text()} produit
+        <<~SettlementCurrency~>> au lieu de <<~Settlement~>> + <<~Currency~>>.
+  \item \textbf{Perte de structure} : la lin\'earisation du texte d\'etruit
+        la relation spatiale entre labels (colonne gauche) et valeurs
+        (colonne droite).
+  \item \textbf{Confusion de colonnes} : dans un layout \`a 2 colonnes,
+        les mots de la ligne suivante sont concat\'en\'es \`a la fin de la
+        ligne courante.
+\end{enumerate}
+
+
+% =============================================================================
+\section{Algorithmes fondamentaux}
+% =============================================================================
+
+Cette section d\'ecrit les 5 algorithmes au c\oe ur de \texttt{coord\_extractor.py}.
+Chaque algorithme est pr\'esent\'e avec son pseudo-code, ses param\`etres critiques,
+et les cons\'equences d'une modification.
+
+\subsection{Algorithme 1 : Extraction des mots}
+
+\subsubsection{Description}
+
+Chaque page du PDF est trait\'ee par \texttt{pdfplumber.page.extract\_words()}
+avec les param\`etres :
+
+\begin{lstlisting}[style=py]
+page.extract_words(
+    x_tolerance=1,     # CRITIQUE
+    y_tolerance=1,     # CRITIQUE
+    keep_blank_chars=False,
+)
+\end{lstlisting}
+
+\subsubsection{Pseudo-code}
+
+\begin{lstlisting}[style=pseudo]
+FONCTION extraire_mots(pdf_path):
+    mots ← []
+    POUR CHAQUE page DANS pdf.pages FAIRE
+        raw ← page.extract_words(x_tolerance=1, y_tolerance=1)
+        POUR CHAQUE w DANS raw FAIRE
+            mots.ajouter(Word(text=w.text, x0=w.x0, top=w.top,
+                              x1=w.x1, bottom=w.bottom, page=i))
+        FIN
+    FIN
+    RETOURNER mots
+\end{lstlisting}
+
+\subsubsection{Impact du param\`etre \texttt{x\_tolerance}}
+
+\begin{critbox}[Param\`etre le plus critique du projet]
+\texttt{WORD\_X\_TOLERANCE = 1} est le param\`etre qui conditionne toute la
+cha\^ine en aval. Avec la valeur par d\'efaut de pdfplumber (3), on obtient
+107 blobs coll\'es sur la premi\`ere page. Avec 1, on obtient 745 mots
+correctement s\'epar\'es.
+\end{critbox}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ccp{7cm}}
+\toprule
+\textbf{x\_tolerance} & \textbf{Mots page 1} & \textbf{Cons\'equence} \\
+\midrule
+1 (actuel) & 745 & S\'eparation correcte, pipeline fonctionnelle \\
+2 & $\sim$400 & Certains mots coll\'es, paires partiellement cass\'ees \\
+3 (d\'efaut) & 107 & Blobs inutilisables, pipeline enti\`erement cass\'ee \\
+\bottomrule
+\end{tabular}
+\caption{Impact de \texttt{x\_tolerance} sur l'extraction}
+\end{table}
+
+\textbf{Si modifi\'e} : la reconstruction de lignes, la d\'etection de colonnes,
+les paires label-valeur et donc \textbf{toute l'extraction} sont affect\'ees.
+Ce param\`etre ne doit \textbf{jamais} \^etre modifi\'e sans revalider l'int\'egralit\'e
+de la pipeline.
+
+\subsection{Algorithme 2 : Regroupement en lignes}
+
+\subsubsection{Description}
+
+Les mots sont tri\'es par $(page, y, x_0)$ puis regroup\'es s\'equentiellement.
+Deux mots cons\'ecutifs appartiennent \`a la m\^eme ligne si :
+
+$$|y_{\text{courant}} - y_{\text{mot}}| \leq \tau_y \quad \text{avec } \tau_y = 3.0 \text{ pt}$$
+
+\subsubsection{Pseudo-code}
+
+\begin{lstlisting}[style=pseudo]
+FONCTION grouper_en_lignes(mots):
+    trier mots par (page, top, x0)
+    lignes ← []
+    ligne_courante ← [mots[0]]
+    y_courant ← mots[0].top
+
+    POUR CHAQUE mot DANS mots[1:] FAIRE
+        SI |mot.top - y_courant| ≤ 3.0 ET mot.page = page_courante ALORS
+            ligne_courante.ajouter(mot)
+        SINON
+            trier ligne_courante par x0
+            lignes.ajouter(Line(words=ligne_courante, y=moyenne(tops)))
+            ligne_courante ← [mot]
+            y_courant ← mot.top
+        FIN
+    FIN
+    RETOURNER lignes
+\end{lstlisting}
+
+\subsubsection{Calibration du seuil $\tau_y = 3.0$ pt}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ccp{7cm}}
+\toprule
+$\tau_y$ & \textbf{Effet} & \textbf{Risque} \\
+\midrule
+1.0 & Trop strict & Des mots de la m\^eme ligne sont s\'epar\'es \\
+3.0 (actuel) & Optimal BIL & Hauteur de ligne 7--12~pt, gap inter-lignes 4--8~pt \\
+5.0 & Trop laxiste & Deux lignes successives fusionn\'ees \\
+\bottomrule
+\end{tabular}
+\caption{Calibration de \texttt{LINE\_Y\_THRESHOLD}}
+\end{table}
+
+\textbf{Complexit\'e} : $O(n \log n)$ pour le tri, $O(n)$ pour le parcours.
+
+\subsection{Algorithme 3 : D\'etection de colonnes par histogramme}
+
+\subsubsection{Description}
+
+Pour chaque page, on construit un histogramme des positions $x_0$ de tous
+les mots, bin\'e \`a une r\'esolution de 5~pt. Les deux bins les plus fr\'equents,
+s\'epar\'es d'au moins \texttt{COLUMN\_GAP\_MIN = 20~pt}, sont les d\'ebuts
+de colonnes.
+
+\subsubsection{Pseudo-code}
+
+\begin{lstlisting}[style=pseudo]
+FONCTION detecter_colonnes(lignes, page):
+    x_starts ← [round(w.x0) POUR CHAQUE w DANS lignes SI w.page = page]
+    bins ← histogramme(x_starts, taille_bin=5)
+    trier bins par frequence decroissante
+
+    colonnes ← []
+    POUR CHAQUE (bin_x, count) DANS bins FAIRE
+        SI count < 3 ALORS sortir
+        SI tous |bin_x - c| > 20 POUR c DANS colonnes ALORS
+            colonnes.ajouter(bin_x)
+        FIN
+    FIN
+    RETOURNER trier(colonnes)
+\end{lstlisting}
+
+\subsubsection{R\'esultat typique sur PDFs BIL}
+
+\begin{itemize}
+  \item Colonne 1 (labels) : $x_0 \approx 36$~pt
+  \item Colonne 2 (valeurs) : $x_0 \approx 142$~pt
+  \item Fronti\`ere calcul\'ee : $(36 + 142) / 2 = 89$~pt
+\end{itemize}
+
+\textbf{Si \texttt{COLUMN\_GAP\_MIN} est r\'eduit} : des groupes de mots proches
+sont confondus avec des colonnes. \textbf{Si augment\'e} : les colonnes \'etroites
+ne sont plus d\'etect\'ees.
+
+\subsection{Algorithme 4 : Construction des paires label-valeur}
+
+\subsubsection{Description}
+
+Pour chaque ligne d'une page \`a 2+ colonnes, les mots sont s\'epar\'es en
+deux groupes par la fronti\`ere de colonne :
+
+\begin{itemize}
+  \item Mots \`a $x_0 < \text{fronti\`ere}$ $\rightarrow$ \textbf{label}
+  \item Mots \`a $x_0 \geq \text{fronti\`ere}$ $\rightarrow$ \textbf{valeur}
+\end{itemize}
+
+\subsubsection{Pseudo-code}
+
+\begin{lstlisting}[style=pseudo]
+FONCTION construire_paires(lignes):
+    paires ← []
+    POUR CHAQUE page FAIRE
+        colonnes ← detecter_colonnes(lignes, page)
+        SI |colonnes| < 2 ALORS continuer
+        frontiere ← (colonnes[0] + colonnes[1]) / 2
+
+        POUR CHAQUE ligne DANS lignes_de_page FAIRE
+            gauche ← [w POUR w DANS ligne.words SI w.x0 < frontiere]
+            droite ← [w POUR w DANS ligne.words SI w.x0 ≥ frontiere]
+            SI gauche ET droite ET len(label) ≤ 60 ALORS
+                paires.ajouter(LabelValuePair(
+                    label=joindre(gauche),
+                    value=joindre(droite)))
+            FIN
+        FIN
+    FIN
+    RETOURNER paires
+\end{lstlisting}
+
+\subsubsection{Filtre des labels longs}
+
+Les labels de plus de 60 caract\`eres sont \'ecart\'es. Ce sont des paragraphes
+de texte, pas des labels structurels. Ce seuil est empirique et adapt\'e aux
+term sheets BIL.
+
+\subsection{Algorithme 5 : Reconstruction du texte propre}
+
+Toutes les lignes reconstruites sont concat\'en\'ees en un texte continu,
+avec des marqueurs de saut de page. Ce texte sert de \textbf{fallback}
+pour les recherches regex quand les paires label-valeur ne suffisent pas.
+
+\begin{lstlisting}[style=pseudo]
+FONCTION construire_texte(lignes):
+    parties ← []
+    POUR CHAQUE ligne FAIRE
+        SI changement_de_page ALORS
+            parties.ajouter("--- PAGE BREAK ---")
+        parties.ajouter(ligne.text)
+    FIN
+    RETOURNER joindre(parties, "\n")
+\end{lstlisting}
+
+
+% =============================================================================
+\section{Extraction des champs --- \texttt{FieldExtractor}}
+% =============================================================================
+
+\subsection{Pipeline en 3 \'etapes}
+
+Chaque champ est extrait selon une hi\'erarchie stricte de confiance :
+
+\begin{enumerate}
+  \item \textbf{Passe 1 --- Paires label-valeur} (confiance haute) :
+        recherche du champ dans les paires via la table
+        \texttt{LABEL\_TO\_FIELD}. Match exact puis partiel.
+  \item \textbf{Passe 2 --- Regex} (confiance moyenne) :
+        patterns multilingues (EN/FR/DE) appliqu\'es sur le texte complet.
+  \item \textbf{Passe 3 --- Inf\'erence} (confiance basse) :
+        d\'eduction \`a partir d'autres champs (ex : SSPA $\rightarrow$
+        capital protection).
+\end{enumerate}
+
+\begin{critbox}[R\`egle absolue de priorit\'e]
+La passe~3 ne doit \textbf{jamais} \'ecraser un r\'esultat des passes~1 ou~2.
+L'inf\'erence est un dernier recours uniquement.
+\end{critbox}
+
+\subsection{La fonction \texttt{\_lookup\_pair()}}
+
+C'est le helper central de la passe~1. Algorithme :
+
+\begin{lstlisting}[style=pseudo]
+FONCTION lookup_pair(field_name):
+    POUR CHAQUE paire DANS paires FAIRE
+        label ← paire.label.strip().rstrip(":")
+        SI label DANS LABEL_TO_FIELD ET LABEL_TO_FIELD[label] = field_name ALORS
+            RETOURNER paire.value
+        FIN
+        POUR CHAQUE (known, mapped) DANS LABEL_TO_FIELD FAIRE
+            SI mapped = field_name ET known.lower() DANS label.lower() ALORS
+                RETOURNER paire.value
+            FIN
+        FIN
+    FIN
+    RETOURNER None
+\end{lstlisting}
+
+Le double match (exact puis partiel) est n\'ecessaire car les labels dans le PDF
+peuvent contenir du texte suppl\'ementaire (ex: <<~Capital Protection (at Expiry)~>>
+doit matcher <<~Capital Protection~>>).
+
+\subsection{ISIN --- Scoring par proximit\'e}
+
+\subsubsection{D\'etection}
+
+Regex : \texttt{\textbackslash b([A-Z]\{2\}[A-Z0-9]\{10\})\textbackslash b}
+
+Validation : pr\'efixe dans \texttt{VALID\_ISIN\_PREFIXES} (23 pays) + au moins
+un chiffre (\'elimine les faux positifs comme \texttt{PRIVATEPLACEMENT}).
+
+\subsubsection{Classification PST vs Underlying}
+
+\begin{lstlisting}[style=pseudo]
+FONCTION classifier_isins(tous_isins):
+    // Etape 1 : chercher dans les paires
+    pst ← lookup_pair("PST_ISIN")
+    SI pst ALORS RETOURNER (pst, reste)
+
+    // Etape 2 : identifier les ISINs dans la zone UNDERLYING
+    zone ← texte entre "UNDERLYING" et "PRODUCT DETAILS"
+    zone_isins ← {i POUR i DANS tous_isins SI i DANS zone}
+
+    // Etape 3 : scoring par proximite au label "ISIN"
+    POUR CHAQUE isin FAIRE
+        score ← distance_min(isin, toutes_occurrences("ISIN"))
+        SI isin DANS zone_isins ALORS score += 800
+        SI isin pres de "Bloomberg"/"Ticker" ALORS score += 800
+    FIN
+    RETOURNER (meilleur_score, reste)
+\end{lstlisting}
+
+La p\'enalit\'e de \textbf{+800} est empirique. Elle pousse les ISINs des
+sous-jacents (pr\`es de <<~Bloomberg~>>) en bas du classement, \'evitant de
+confondre un ISIN sous-jacent avec l'ISIN du produit.
+
+\subsection{ISSUER --- R\`egles + noms connus + exclusion}
+
+\textbf{Passe 1} : lookup pair, nettoyage (virgules finales, parenth\`eses).
+V\'erification de longueur (3--100 caract\`eres) et de casse (premi\`ere lettre
+majuscule). Exclusion des faux positifs via \texttt{ISSUER\_FALSE\_POSITIVES}
+(FINMA, ECB, SIX, Euroclear, etc.).
+
+\textbf{Passe 2} : recherche des 22 noms connus (\texttt{KNOWN\_ISSUERS})
+dans le texte, avec v\'erification de proximit\'e ($< 400$ caract\`eres) au
+label <<~Issuer~>> / <<~\'Emetteur~>> / <<~Emittentin~>>.
+
+\textbf{Normalisation} : espaces multiples r\'eduits, virgules finales retir\'ees,
+parenth\`eses supprim\'ees.
+
+\begin{infobox}[Limite connue]
+L'approche par noms connus ne d\'etecte pas les \'emetteurs absents de la
+liste. C'est la principale motivation pour l'int\'egration de SpaCy NER
+(Partie~II).
+\end{infobox}
+
+\subsection{CAPITAL PROTECTION --- Logique 3 \'etapes}
+
+C'est le champ le plus complexe. La logique retourne un tuple
+\texttt{(valeur, source)} pour le surlignage intelligent.
+
+\subsubsection{\'Etape 1 : paires label-valeur}
+
+Labels : <<~Capital Protection~>>, <<~Protection du Capital~>>,
+<<~Kapitalschutz~>>, <<~Minimum Redemption~>>.
+
+Si la valeur contient <<~None~>>, <<~Kein~>>, <<~Aucun~>> $\rightarrow$ retourne \texttt{("0", "explicit")}.
+
+\subsubsection{\'Etape 2 : 6 patterns regex (EN/FR/DE)}
+
+\begin{lstlisting}[style=pseudo]
+patterns ← [
+    Capital Protection (at Expiry)? : (None|nombre) %?
+    Capital Protection \n (None|nombre) %?
+    Protection du Capital : (nombre) %
+    Kapitalschutz : (None|Kein|nombre) %?
+    Minimum Redemption : (nombre) %
+    Capital Guarantee : (nombre) %
+]
+\end{lstlisting}
+
+D\'etection additionnelle : <<~No Capital Protection~>>, <<~not capital protected~>>,
+<<~100\% Capital Protected~>>.
+
+\subsubsection{\'Etape 3 : inf\'erence SSPA (dernier recours)}
+
+\begin{lstlisting}[style=pseudo]
+SI sspa_type DANS SSPA_CAPITAL_PROTECTION ALORS
+    valeur ← SSPA_CAPITAL_PROTECTION[sspa_type]
+    RETOURNER (str(valeur), "sspa")
+FIN
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Code SSPA} & \textbf{Type} & \textbf{Protection} \\
+\midrule
+1100--1199 & Capital Protection & 100\% \\
+1200--1260 & Yield Enhancement & 0\% \\
+1300--1330 & Participation & 0\% \\
+2100--2300 & Leverage & 0\% \\
+\bottomrule
+\end{tabular}
+\caption{Mapping SSPA $\rightarrow$ Capital Protection (21 codes)}
+\end{table}
+
+\subsubsection{Override BIL YES}
+
+Si le texte contient <<~BIL YES~>> dans les 2000 premiers caract\`eres,
+les champs WORST\_OR\_AVERAGE et CAPITAL\_PROTECTION sont forc\'es \`a
+\texttt{"W"} et \texttt{"100"} respectivement, avec source \texttt{"bil\_yes"}.
+
+\subsection{WORST\_OR\_AVERAGE --- Patterns et heuristique}
+
+\subsubsection{Logique}
+
+\begin{lstlisting}[style=pseudo]
+FONCTION extraire_worst_or_average(n_isins, n_tickers):
+    n ← max(n_isins, n_tickers)
+    SI n = 1 ALORS RETOURNER ("W", "single_underlying")
+
+    zone ← texte[:5000]
+    POUR CHAQUE pattern DANS WORST_OF_KEYWORDS (11 patterns) FAIRE
+        SI pattern matche zone ALORS RETOURNER ("W", "pattern")
+    FIN
+    POUR CHAQUE pattern DANS AVERAGE_KEYWORDS (4 patterns) FAIRE
+        SI pattern matche zone ALORS RETOURNER ("A", "pattern")
+    FIN
+    RETOURNER ("nan", "none")
+\end{lstlisting}
+
+\subsubsection{11 patterns worst-of}
+
+\begin{itemize}
+  \item EN : \texttt{worst-of}, \texttt{worst performance}, \texttt{lowest performing}, \texttt{linked to worst}
+  \item FR : \texttt{la plus mauvaise performance}, \texttt{plus mauvaise performance}
+  \item DE : \texttt{Schlechtest\textbackslash w* Kursentwicklung} (couvre toutes les d\'eclinaisons)
+  \item G\'en\'erique : \texttt{Multi Barrier}, \texttt{Multi Barriere}
+\end{itemize}
+
+\subsubsection{Zone de recherche limit\'ee}
+
+La recherche est limit\'ee aux 5000 premiers caract\`eres pour \'eviter les faux
+positifs dans les disclaimers (<<~in the worst case scenario~>>).
+
+\subsection{MATURITY --- Parsing et normalisation ISO}
+
+\subsubsection{Fonction \texttt{\_parse\_date()}}
+
+\begin{lstlisting}[style=pseudo]
+FONCTION parse_date(raw):
+    nettoyer ← supprimer "(subject to..."
+
+    // Format numerique : DD/MM/YYYY, DD.MM.YYYY
+    SI match(\d{1,2}[/.-]\d{1,2}[/.-]\d{4}) ALORS
+        SI mois ≤ 12 ET jour ≤ 31 ALORS
+            RETOURNER "YYYY-MM-DD"
+        FIN
+    FIN
+
+    // Format textuel : "04 February 2028"
+    SI match(\d{1,2} \w+ \d{4}) ALORS
+        mois ← MONTH_MAP[nom_mois]  // EN/FR/DE
+        SI mois ALORS RETOURNER "YYYY-MM-DD"
+    FIN
+
+    RETOURNER None
+\end{lstlisting}
+
+La map \texttt{MONTH\_MAP} contient 30+ entr\'ees couvrant les noms de mois
+en anglais, fran\c{c}ais et allemand (y compris les formes sans accent :
+<<~fevrier~>> en plus de <<~f\'evrier~>>).
+
+\subsection{CURRENCY --- Validation stricte}
+
+Extraction via paires puis 5 regex multilingues. Chaque candidat est valid\'e
+contre \texttt{VALID\_CURRENCIES} (17 devises ISO~4217). Un token comme
+<<~THE~>> (3 lettres majuscules) est rejet\'e car absent du set.
+
+Normalisation post-extraction : forc\'e en majuscules (\texttt{ccy.upper()}).
+
+
+% =============================================================================
+\section{Logiques critiques m\'etier}
+% =============================================================================
+
+\subsection{Mapping SSPA $\rightarrow$ Capital Protection}
+
+La classification SSPA est le standard suisse pour les produits structur\'es.
+La map \texttt{SSPA\_CAPITAL\_PROTECTION} couvre 21 codes r\'epartis en 4
+familles. Cette map est la seule source d'inf\'erence pour la protection du
+capital quand le PDF ne contient pas l'information.
+
+\subsection{Multilinguisme}
+
+Deux m\'ecanismes parall\`eles :
+
+\begin{enumerate}
+  \item \textbf{\texttt{LABEL\_TO\_FIELD}} : table de correspondance directe.
+        30+ entr\'ees couvrant les labels EN, FR, DE vers des noms de champs
+        canoniques (ex : <<~Verfall~>> $\rightarrow$ \texttt{MATURITY}).
+  \item \textbf{Regex multilingues} : chaque champ a des patterns sp\'ecifiques
+        par langue dans les fonctions \texttt{\_extract\_*()}.
+\end{enumerate}
+
+La d\'etection de langue elle-m\^eme utilise \texttt{langid} (primaire) ou
+un comptage de mots-cl\'es (fallback). Le r\'esultat n'influence pas directement
+l'extraction (les patterns couvrent les 3 langues simultan\'ement) mais
+est export\'e dans l'Excel.
+
+\subsection{Validation des donn\'ees}
+
+\begin{itemize}
+  \item \textbf{ISIN} : pr\'efixe dans 23 pays + au moins 1 chiffre.
+  \item \textbf{Devise} : dans un set de 17 devises ISO~4217.
+  \item \textbf{ISSUER} : longueur 3--100, premi\`ere majuscule, pas dans
+        la liste des faux positifs.
+  \item \textbf{Date} : mois $\leq$ 12, jour $\leq$ 31.
+\end{itemize}
+
+
+% =============================================================================
+\section{Points critiques --- \`A ne pas casser}
+% =============================================================================
+
+\subsection{Param\`etres sensibles}
+
+\begin{critbox}[Ne JAMAIS modifier sans revalidation compl\`ete]
+\begin{tabularx}{\textwidth}{lclX}
+\toprule
+\textbf{Param\`etre} & \textbf{Valeur} & \textbf{Fichier} & \textbf{Si modifi\'e} \\
+\midrule
+\texttt{WORD\_X\_TOLERANCE} & 1 & config.py & Collage de mots $\rightarrow$ pipeline cass\'ee \\
+\texttt{WORD\_Y\_TOLERANCE} & 1 & config.py & Fusion verticale des mots \\
+\texttt{LINE\_Y\_THRESHOLD} & 3.0 & config.py & Lignes fusionn\'ees ou \'eclat\'ees \\
+\texttt{COLUMN\_GAP\_MIN} & 20.0 & config.py & Fausse d\'etection de colonnes \\
+\bottomrule
+\end{tabularx}
+\end{critbox}
+
+\subsection{Logiques \`a pr\'eserver}
+
+\begin{critbox}[Invariants du syst\`eme]
+\begin{enumerate}
+  \item \textbf{Priorit\'e stricte} : paires > regex > inf\'erence.
+        L'inf\'erence SSPA ne doit jamais \'ecraser une valeur explicite.
+  \item \textbf{Ordre dans \texttt{extract\_all()}} : les variables
+        \texttt{underlying\_isins} et \texttt{bloomberg\_tickers} doivent
+        \^etre calcul\'ees \textbf{avant} d'\^etre pass\'ees \`a
+        \texttt{\_extract\_worst\_or\_average()}.
+  \item \textbf{Scoring ISIN} : la p\'enalit\'e +800 pour les ISINs pr\`es de
+        <<~Bloomberg~>> est essentielle pour ne pas confondre PST et underlying.
+  \item \textbf{Normalisation en dernier} : \texttt{\_normalise()} est appel\'ee
+        apr\`es tous les \texttt{\_extract\_*()}, jamais avant.
+  \item \textbf{BIL YES en tout dernier} : l'override BIL YES est appliqu\'e
+        apr\`es \texttt{\_normalise()}, juste avant le return.
+  \item \textbf{Worst/Average retourne <<~nan~>>} : pas \texttt{None}, pas
+        \texttt{""}, mais la cha\^ine \texttt{"nan"} pour homog\'en\'eit\'e Excel.
+\end{enumerate}
+\end{critbox}
+
+\subsection{D\'ependances fortes entre modules}
+
+\begin{critbox}[Cha\^ine de d\'ependances]
+\begin{itemize}
+  \item \texttt{config.py} est import\'e par \textbf{tous} les modules. Toute
+        modification ici impacte potentiellement tout.
+  \item Si un champ est ajout\'e/supprim\'e dans \texttt{field\_extractor}, il
+        faut aussi modifier \texttt{MAIN\_COLUMNS} dans \texttt{excel\_exporter}
+        et potentiellement \texttt{FIELD\_COLORS} + \texttt{SKIP\_FIELDS} dans
+        \texttt{highlighter}.
+  \item Le highlighting tourne \textbf{avant} l'export Excel dans \texttt{main.py}
+        (car le nom du fichier annot\'e est dans l'Excel).
+  \item Les cl\'es commen\c{c}ant par \texttt{\_} dans le dict r\'esultat
+        (\texttt{\_WA\_SOURCE}, \texttt{\_CP\_SOURCE}, \texttt{\_IS\_BIL\_YES})
+        sont des m\'etadonn\'ees pour le highlighter. Elles ne doivent pas
+        appara\^itre dans l'Excel.
+\end{itemize}
+\end{critbox}
+
+
+% =============================================================================
+\section{Zones modifiables --- SAFE}
+% =============================================================================
+
+\begin{safebox}[Modifications sans risque]
+Les modifications suivantes peuvent \^etre faites sans risque de casser la
+pipeline, \`a condition de respecter les conventions existantes.
+\end{safebox}
+
+\subsection{Ajout de regex}
+
+Ajouter un pattern dans \texttt{config.WORST\_OF\_KEYWORDS\_EN} ou
+\texttt{config.AVERAGE\_KEYWORDS}. Le pattern sera automatiquement utilis\'e
+par \texttt{\_extract\_worst\_or\_average()}.
+
+\subsection{Enrichissement de \texttt{LABEL\_TO\_FIELD}}
+
+Ajouter une entr\'ee pour couvrir un nouveau label multilingue. Par exemple,
+pour couvrir le label italien <<~Emittente~>> :
+
+\begin{lstlisting}[style=py]
+"Emittente": "ISSUER",  # IT
+\end{lstlisting}
+
+\subsection{Ajout d'un \'emetteur connu}
+
+Ajouter le nom exact dans \texttt{config.KNOWN\_ISSUERS}. Le fallback de
+proximit\'e l'utilisera automatiquement.
+
+\subsection{Ajout d'un code SSPA}
+
+Ajouter le code et sa protection dans \texttt{config.SSPA\_CAPITAL\_PROTECTION}.
+
+\subsection{Ajout d'un champ complet}
+
+Proc\'edure en 4 \'etapes :
+\begin{enumerate}
+  \item \texttt{config.py} : ajouter les labels dans \texttt{LABEL\_TO\_FIELD}.
+  \item \texttt{field\_extractor.py} : cr\'eer \texttt{\_extract\_nouveau\_champ()},
+        l'appeler dans \texttt{extract\_all()}.
+  \item \texttt{excel\_exporter.py} : ajouter dans \texttt{MAIN\_COLUMNS}.
+  \item \texttt{highlighter.py} : ajouter dans \texttt{FIELD\_COLORS} ou
+        \texttt{SKIP\_FIELDS}.
+\end{enumerate}
+
+
+% =============================================================================
+\section{Limites actuelles}
+% =============================================================================
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{lXl}
+\toprule
+\textbf{Limite} & \textbf{Description} & \textbf{Impact} \\
+\midrule
+Format PDF & D\'ependance forte au layout BIL (2 colonnes, $x \approx 36/142$) & Moyen \\
+Multi-lignes & Valeurs sur 2+ lignes non captur\'ees & Moyen \\
+3+ colonnes & Layouts UBS/CS non support\'es (pas de paires) & \'Elev\'e \\
+Issuer & Liste ferm\'ee de 22 noms connus & Moyen \\
+W/A faible & Heuristique seulement (patterns + comptage) & Moyen \\
+Pas de ML & Aucun mod\`ele appris, uniquement des r\`egles & \'Elev\'e \\
+Pas de Luhn & Pas de validation checksum ISIN & Faible \\
+Pas de confiance & Pas de score de confiance par champ & Moyen \\
+\bottomrule
+\end{tabularx}
+\caption{Limites du syst\`eme actuel}
+\end{table}
+
+
+% #############################################################################
+% #############################################################################
+\newpage
+\part{Pipeline d'Am\'elioration IA / ML}
+% #############################################################################
+% #############################################################################
+
+% =============================================================================
+\section{Transition --- Pourquoi \'evoluer}
+% =============================================================================
+
+Le syst\`eme actuel fonctionne bien sur les term sheets BIL avec un taux de
+remplissage de 100\% sur les 3 langues. Cependant, les limites identifi\'ees
+en Section~7 montrent que l'approche purement r\`egle ne passera pas \`a l'\'echelle :
+
+\begin{enumerate}
+  \item \textbf{Issuer} : un nouvel \'emetteur absent de la liste n'est pas
+        d\'etect\'e. Impossible de maintenir une liste exhaustive.
+  \item \textbf{Worst-of / Average} : les patterns regex ne couvrent pas
+        toutes les formulations. Un mod\`ele appris g\'en\'eraliserait mieux.
+  \item \textbf{Layouts vari\'es} : chaque \'emetteur a son propre format.
+        Les seuils calibr\'es sur BIL ne fonctionnent pas sur UBS ou Leonteq.
+  \item \textbf{Scalabilit\'e} : ajouter un champ demande 4 modifications
+        manuelles dans 4 fichiers.
+\end{enumerate}
+
+\begin{infobox}[Principe directeur]
+L'\'evolution doit \^etre \textbf{additive}. Le syst\`eme \`a r\`egles reste le
+socle. Le ML s'ajoute comme une couche suppl\'ementaire qui am\'eliore les
+cas difficiles, avec un fallback syst\'ematique vers les r\`egles.
+\end{infobox}
+
+
+% =============================================================================
+\section{Objectif}
+% =============================================================================
+
+\begin{enumerate}
+  \item \textbf{Robustesse} : r\'eduire le taux d'\'echec sur les PDFs non-BIL
+        (objectif : $>$90\% de remplissage sur 50 \'emetteurs).
+  \item \textbf{Pr\'ecision ISSUER} : d\'etecter des \'emetteurs inconnus sans
+        liste ferm\'ee.
+  \item \textbf{Pr\'ecision W/A} : classifier worst-of vs average sans d\'ependre
+        de patterns manuels.
+  \item \textbf{Interpr\'etabilit\'e} : chaque pr\'ediction ML doit \^etre
+        explicable (pourquoi ce r\'esultat ?).
+\end{enumerate}
+
+
+% =============================================================================
+\section{Approche hybride : R\`egles + ML}
+% =============================================================================
+
+\subsection{Architecture cible}
+
+$$\text{PDF} \xrightarrow{\text{coord\_extractor}} \text{features}
+\xrightarrow{\text{ML + r\`egles}} \text{champs}$$
+
+Pour chaque champ, le syst\`eme suit la logique :
+
+\begin{lstlisting}[style=pseudo]
+FONCTION extraire_champ_hybride(champ):
+    // 1. Regles (haute confiance)
+    resultat_regles ← extraire_par_regles(champ)
+    SI resultat_regles ≠ None ET confiance = "haute" ALORS
+        RETOURNER resultat_regles
+
+    // 2. ML (confiance variable)
+    resultat_ml ← modele.predire(champ, features)
+    SI resultat_ml.confiance > seuil ALORS
+        RETOURNER resultat_ml
+
+    // 3. Fallback regles (basse confiance)
+    RETOURNER resultat_regles OU None
+\end{lstlisting}
+
+\subsection{Principe : le ML ne remplace jamais les r\`egles}
+
+\begin{critbox}[R\`egle fondamentale]
+Si les r\`egles trouvent une valeur avec haute confiance (paire label-valeur
+avec match exact), le ML n'est \textbf{jamais} consult\'e. Le ML n'intervient
+que quand les r\`egles \'echouent ou retournent une confiance basse.
+\end{critbox}
+
+
+% =============================================================================
+\section{Int\'egration SpaCy --- NER pour l'ISSUER}
+% =============================================================================
+
+\subsection{Probl\`eme actuel}
+
+L'extraction de l'ISSUER repose sur une liste ferm\'ee de 22 noms. Un \'emetteur
+inconnu (ex: <<~Zurcher Kantonalbank Investment Products~>>) n'est pas d\'etect\'e.
+
+\subsection{Solution : SpaCy Named Entity Recognition}
+
+SpaCy est une biblioth\`eque NLP l\'eg\`ere avec un mod\`ele pr\'e-entra\^in\'e
+capable de d\'etecter les entit\'es nomm\'ees de type \texttt{ORG} (organisation).
+
+\begin{lstlisting}[style=py]
+import spacy
+nlp = spacy.load("en_core_web_sm")
+
+def extract_issuer_spacy(text):
+    # Zone de recherche : 500 chars autour du label "Issuer"
+    zone = get_zone_near("Issuer", text, radius=500)
+    doc = nlp(zone)
+    orgs = [ent.text for ent in doc.ents if ent.label_ == "ORG"]
+    # Filtrer les faux positifs
+    orgs = [o for o in orgs if o not in ISSUER_FALSE_POSITIVES]
+    return orgs[0] if orgs else None
+\end{lstlisting}
+
+\subsection{Int\'egration dans le FieldExtractor}
+
+\begin{lstlisting}[style=pseudo]
+FONCTION extraire_issuer_hybride():
+    // Passe 1 : paires label-valeur (inchange)
+    resultat ← lookup_pair("ISSUER")
+    SI resultat ALORS RETOURNER resultat
+
+    // Passe 2 : noms connus + proximite (inchange)
+    resultat ← chercher_noms_connus()
+    SI resultat ALORS RETOURNER resultat
+
+    // Passe 3 : SpaCy NER (NOUVEAU)
+    resultat ← extract_issuer_spacy(text)
+    SI resultat ALORS RETOURNER resultat
+
+    RETOURNER None
+\end{lstlisting}
+
+\subsection{Entra\^inement custom (optionnel)}
+
+Si le mod\`ele g\'en\'erique ne suffit pas, on peut entra\^iner un mod\`ele
+sp\'ecialis\'e sur les term sheets financiers :
+
+\begin{lstlisting}[style=py]
+# Donnees d'entrainement
+TRAIN_DATA = [
+    ("Issuer: BNP Paribas Issuance B.V.",
+     {"entities": [(8, 35, "ISSUER")]}),
+    ("Emittentin: Leonteq Securities AG",
+     {"entities": [(12, 34, "ISSUER")]}),
+]
+
+# Entrainement
+nlp.get_pipe("ner").add_label("ISSUER")
+optimizer = nlp.resume_training()
+for epoch in range(30):
+    for text, annotations in TRAIN_DATA:
+        nlp.update([text], [annotations], sgd=optimizer)
+\end{lstlisting}
+
+\subsection{Co\^ut et d\'ependances}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Aspect} & \textbf{D\'etail} \\
+\midrule
+Package & \texttt{spacy} + mod\`ele \texttt{en\_core\_web\_sm} (12~Mo) \\
+RAM & $\sim$200~Mo suppl\'ementaires \\
+Temps & $\sim$0.5s par document \\
+Installation & \texttt{pip install spacy \&\& python -m spacy download en\_core\_web\_sm} \\
+\bottomrule
+\end{tabular}
+\caption{Co\^ut de l'int\'egration SpaCy}
+\end{table}
+
+
+% =============================================================================
+\section{scikit-learn --- Classification de segments}
+% =============================================================================
+
+\subsection{Probl\`eme cible}
+
+Classifier automatiquement si un segment de texte correspond \`a un worst-of,
+un average, ou aucun des deux, sans d\'ependre de patterns manuels.
+
+\subsection{Features propos\'ees}
+
+Pour chaque document, on extrait un vecteur de features :
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+\textbf{Feature} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\texttt{n\_underlyings} & int & Nombre de sous-jacents d\'etect\'es \\
+\texttt{has\_barrier} & bool & Pr\'esence du mot <<~Barrier~>> \\
+\texttt{has\_basket} & bool & Pr\'esence du mot <<~Basket~>> \\
+\texttt{has\_average} & bool & Pr\'esence du mot <<~Average~>> \\
+\texttt{sspa\_type} & int & Code SSPA (1230, 1260, etc.) \\
+\texttt{title\_contains\_multi} & bool & <<~Multi~>> dans le titre \\
+\texttt{n\_pages} & int & Nombre de pages du document \\
+\texttt{lang} & cat & Langue d\'etect\'ee (EN/FR/DE) \\
+\bottomrule
+\end{tabularx}
+\caption{Features pour la classification W/A}
+\end{table}
+
+\subsection{Mod\`ele}
+
+\begin{lstlisting}[style=py]
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score
+
+# X : matrice de features, y : labels (W, A, nan)
+model = RandomForestClassifier(n_estimators=100, max_depth=5)
+scores = cross_val_score(model, X, y, cv=5, scoring="accuracy")
+print(f"Accuracy: {scores.mean():.2f} +/- {scores.std():.2f}")
+
+model.fit(X_train, y_train)
+# Feature importance
+for name, imp in zip(feature_names, model.feature_importances_):
+    print(f"  {name}: {imp:.3f}")
+\end{lstlisting}
+
+\subsection{Int\'egration dans le pipeline}
+
+Le mod\`ele ML est un fallback apr\`es les r\`egles :
+
+\begin{lstlisting}[style=pseudo]
+FONCTION extraire_wa_hybride():
+    // Regles actuelles
+    SI n_underlyings = 1 ALORS RETOURNER "W"
+    SI pattern_worst_of matche ALORS RETOURNER "W"
+    SI pattern_average matche ALORS RETOURNER "A"
+
+    // ML fallback
+    features ← calculer_features(document)
+    prediction, confiance ← modele.predire(features)
+    SI confiance > 0.8 ALORS RETOURNER prediction
+
+    RETOURNER "nan"
+\end{lstlisting}
+
+
+% =============================================================================
+\section{Pipeline complet propos\'e}
+% =============================================================================
+
+\begin{lstlisting}[style=pseudo]
+FONCTION pipeline_v3(pdf_path):
+    // Etape 1 : extraction coordonnees (INCHANGE)
+    result ← coord_extractor.extract_from_pdf(pdf_path)
+
+    // Etape 2 : detection langue (INCHANGE)
+    langue ← lang_detector.detect_language(result.clean_text)
+
+    // Etape 3 : segmentation (NOUVEAU)
+    segments ← segmenter_document(result.lines)
+    // segments = [("header", lignes), ("underlying_table", lignes), ...]
+
+    // Etape 4 : features (NOUVEAU)
+    features ← extraire_features(result, segments, langue)
+
+    // Etape 5 : extraction hybride
+    POUR CHAQUE champ FAIRE
+        valeur ← extraire_par_regles(champ, result)
+        SI valeur = None OU confiance_basse ALORS
+            valeur_ml ← modele[champ].predire(features)
+            SI valeur_ml.confiance > seuil ALORS
+                valeur ← valeur_ml
+            FIN
+        FIN
+    FIN
+
+    // Etape 6 : normalisation (INCHANGE)
+    resultat ← normaliser(resultat)
+    RETOURNER resultat
+\end{lstlisting}
+
+
+% =============================================================================
+\section{Cas d'usage concrets}
+% =============================================================================
+
+\subsection{Am\'elioration ISSUER}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+\textbf{Cas} & \textbf{Actuel} & \textbf{Avec SpaCy} \\
+\midrule
+\'Emetteur connu (BIL) & D\'etect\'e via KNOWN\_ISSUERS & D\'etect\'e (idem) \\
+\'Emetteur inconnu (nouveau) & Non d\'etect\'e & D\'etect\'e via NER ORG \\
+Faux positif (FINMA) & Filtr\'e via liste & Filtr\'e + contexte NER \\
+\bottomrule
+\end{tabularx}
+\caption{Comparaison r\`egles vs SpaCy pour ISSUER}
+\end{table}
+
+\subsection{Am\'elioration WORST\_OR\_AVERAGE}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+\textbf{Cas} & \textbf{Actuel} & \textbf{Avec ML} \\
+\midrule
+<<~worst-of~>> explicite & W (pattern) & W (pattern, ML ignor\'e) \\
+Formulation inhabituelle & nan & W ou A (ML avec confiance) \\
+1 seul underlying & W (r\`egle) & W (r\`egle, ML ignor\'e) \\
+Produit exotique & nan & Pr\'ediction ML avec confiance \\
+\bottomrule
+\end{tabularx}
+\caption{Comparaison r\`egles vs ML pour W/A}
+\end{table}
+
+\subsection{R\'eduction des erreurs}
+
+Estimation de l'am\'elioration attendue (bas\'ee sur les limites identifi\'ees) :
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Champ} & \textbf{Fill rate actuel} & \textbf{Cible avec ML} \\
+\midrule
+ISSUER (multi-\'emetteurs) & $\sim$70\% & $>$90\% \\
+W/A (multi-\'emetteurs) & $\sim$75\% & $>$90\% \\
+CAPITAL\_PROTECTION & $\sim$85\% & $>$95\% \\
+\bottomrule
+\end{tabular}
+\caption{Am\'elioration attendue du fill rate}
+\end{table}
+
+
+% =============================================================================
+\section{Points d'attention --- CRUCIAL}
+% =============================================================================
+
+\begin{critbox}[R\`egles imp\'eratives pour l'int\'egration ML]
+\begin{enumerate}
+  \item \textbf{Ne jamais remplacer totalement les r\`egles.} Le ML est un
+        compl\'ement, pas un remplacement. Les r\`egles restent la source de
+        v\'erit\'e quand elles trouvent un r\'esultat.
+
+  \item \textbf{Garder le fallback regex.} Si le ML \'echoue (confiance basse,
+        erreur, mod\`ele absent), la pipeline doit continuer \`a fonctionner
+        avec les r\`egles seules.
+
+  \item \textbf{\'Eviter l'overfitting.} Avec 300 PDFs d'entra\^inement, le
+        risque d'overfitting est \'elev\'e. Utiliser la validation crois\'ee
+        ($k=5$) et limiter la profondeur des arbres (\texttt{max\_depth=5}).
+
+  \item \textbf{Maintenir l'interpr\'etabilit\'e.} Privil\'egier les mod\`eles
+        interpr\'etables (Random Forest, Logistic Regression) sur les bo\^ites
+        noires (deep learning). L'importance des features doit \^etre
+        consultable.
+
+  \item \textbf{Pas de d\'ependances lourdes.} Pas de transformers, pas de
+        HuggingFace, pas de GPU. SpaCy (\texttt{en\_core\_web\_sm}, 12~Mo)
+        et scikit-learn sont les seules d\'ependances autoris\'ees.
+
+  \item \textbf{Graceful degradation.} Si \texttt{spacy} ou
+        \texttt{scikit-learn} ne sont pas install\'es, la pipeline doit
+        fonctionner exactement comme avant (comme \texttt{langid} avec
+        son fallback keywords).
+
+  \item \textbf{Tester sur les 3 langues.} Chaque mod\`ele doit \^etre
+        valid\'e sur des documents EN, FR et DE.
+
+  \item \textbf{Versionner les mod\`eles.} Les fichiers \texttt{.pkl}
+        (scikit-learn) et les mod\`eles SpaCy custom doivent \^etre
+        versionn\'es avec le code.
+\end{enumerate}
+\end{critbox}
+
+
+% =============================================================================
+\section{Roadmap d'impl\'ementation}
+% =============================================================================
+
+\subsection{Phase 1 --- Am\'eliorer les r\`egles (0--2 semaines)}
+
+\begin{itemize}
+  \item Enrichir \texttt{KNOWN\_ISSUERS} avec les 50 \'emetteurs les plus fr\'equents.
+  \item Ajouter des patterns W/A pour les formulations manquantes.
+  \item Ajouter la validation Luhn pour les ISINs.
+  \item Ajouter un score de confiance par champ (high/medium/low).
+  \item G\'erer les valeurs multi-lignes (continuation de la ligne pr\'ec\'edente).
+\end{itemize}
+
+\textbf{Crit\`ere de succ\`es} : fill rate $>$ 85\% sur un corpus de 300 PDFs
+multi-\'emetteurs.
+
+\subsection{Phase 2 --- SpaCy NER (2--4 semaines)}
+
+\begin{itemize}
+  \item Installer SpaCy + \texttt{en\_core\_web\_sm}.
+  \item Impl\'ementer \texttt{\_extract\_issuer\_spacy()} comme passe~3 dans
+        \texttt{\_extract\_issuer()}.
+  \item \'Evaluer sur 100 PDFs avec issuer inconnu.
+  \item Si n\'ecessaire, entra\^iner un mod\`ele NER custom sur les term sheets.
+\end{itemize}
+
+\textbf{Crit\`ere de succ\`es} : fill rate ISSUER $>$ 90\% sur 50 \'emetteurs.
+
+\subsection{Phase 3 --- Mod\`ele ML pour W/A (4--6 semaines)}
+
+\begin{itemize}
+  \item Construire le dataset de features \`a partir des 300 PDFs annot\'es.
+  \item Entra\^iner un Random Forest avec validation crois\'ee.
+  \item Int\'egrer comme fallback apr\`es les patterns regex.
+  \item Calibrer le seuil de confiance (objectif : pr\'ecision $>$ 90\%).
+\end{itemize}
+
+\textbf{Crit\`ere de succ\`es} : fill rate W/A $>$ 90\%, pr\'ecision $>$ 90\%.
+
+\subsection{Phase 4 --- Hybridation compl\`ete (6--8 semaines)}
+
+\begin{itemize}
+  \item Unifier le pipeline r\`egles + ML dans une classe \texttt{HybridExtractor}.
+  \item Ajouter un dashboard de monitoring (fill rate, confiance, erreurs).
+  \item Impl\'ementer le <<~graceful degradation~>> (fallback si ML absent).
+  \item Documenter et versionner les mod\`eles.
+\end{itemize}
+
+\textbf{Crit\`ere de succ\`es} : pipeline stable sur 500+ PDFs, fill rate
+moyen $>$ 92\%, aucune r\'egression sur les PDFs BIL.
+
+
+% =============================================================================
+\section{R\'esum\'e des technologies}
+% =============================================================================
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{llXl}
+\toprule
+\textbf{Technologie} & \textbf{Usage} & \textbf{Champ concern\'e} & \textbf{Phase} \\
+\midrule
+R\`egles actuelles & Base du syst\`eme & Tous & 0 (actuel) \\
+langid & D\'etection de langue & LANGUAGE & 0 (actuel) \\
+SpaCy NER & D\'etection d'entit\'es & ISSUER & 2 \\
+scikit-learn RF & Classification & WORST\_OR\_AVERAGE & 3 \\
+Score de confiance & Monitoring & Tous & 1--4 \\
+\bottomrule
+\end{tabularx}
+\caption{Technologies utilis\'ees par phase}
+\end{table}
+
+
+% =============================================================================
+\section*{Conclusion}
+% =============================================================================
+
+Le syst\`eme actuel est solide sur les term sheets BIL avec 100\% de remplissage.
+Ses limites sont clairement identifi\'ees : liste ferm\'ee d'\'emetteurs,
+patterns manuels pour W/A, d\'ependance au layout \`a 2 colonnes.
+
+L'\'evolution propos\'ee est \textbf{progressive} et \textbf{additive} :
+
+\begin{enumerate}
+  \item Les r\`egles restent le socle. Elles ne sont jamais supprim\'ees.
+  \item SpaCy NER s'ajoute comme passe~3 pour l'ISSUER.
+  \item scikit-learn s'ajoute comme fallback pour W/A.
+  \item Le <<~graceful degradation~>> garantit que la pipeline fonctionne
+        m\^eme sans les d\'ependances ML.
+\end{enumerate}
+
+Le rapport identifie explicitement :
+\begin{itemize}
+  \item \textcolor{critred}{\textbf{Ce qui est critique}} : les 4 param\`etres
+        sensibles, les 6 invariants, les d\'ependances inter-modules.
+  \item \textcolor{safegreen}{\textbf{Ce qui est modifiable}} : regex, labels,
+        noms connus, codes SSPA.
+  \item \textbf{Comment am\'eliorer} : roadmap en 4 phases avec crit\`eres
+        de succ\`es mesurables.
+\end{itemize}
+
+\vspace{1cm}
+\begin{flushright}
+\textit{Nasser Kassioui --- Mars 2026}
+\end{flushright}
+
+\end{document}
